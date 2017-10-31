@@ -11,9 +11,11 @@ import asyncio
 import aiohttp
 import aiofiles
 
-USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36'
-REFFERER = ''.join(['h', 't', 't', 'p', 's', ':', '/', '/', 's', 'p', 'e', 'a', 'k', 'e', 'r', '.', 'p', 'r', 'i', 'n',
-                    'g', 'l', 'e', 's', '.', 'c', 'o', 'm', '/', 'r', 'u', '_', 'R', 'U', '/', 'H', 'o', 'm', 'e'])
+
+USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) ' \
+             'Chrome/61.0.3163.100 Safari/537.36'
+REFERER = ''.join(['h', 't', 't', 'p', 's', ':', '/', '/', 's', 'p', 'e', 'a', 'k', 'e', 'r', '.', 'p', 'r', 'i', 'n',
+                   'g', 'l', 'e', 's', '.', 'c', 'o', 'm', '/', 'r', 'u', '_', 'R', 'U', '/', 'H', 'o', 'm', 'e'])
 URL = ''.join(['h', 't', 't', 'p', 's', ':', '/', '/', 's', 'p', 'e', 'a', 'k', 'e', 'r', '.', 'p', 'r', 'i', 'n', 'g',
                'l', 'e', 's', '.', 'c', 'o', 'm', '/', 'a', 'p', 'i', '/', 'r', 'u', '_', 'R', 'U', '/', 'r', 'e', 'd',
                'e', 'm', 'p', 't', 'i', 'o', 'n', '/', 'v', 'a', 'l', 'i', 'd', 'a', 't', 'e', '-', 'c', 'o', 'd', 'e',
@@ -34,9 +36,6 @@ MAX_CLIENTS = int(MAX_SIMULTANEOUSLY_REQUEST / CODES_PER_TASK_MAX)
 
 DEBUG = False
 
-
-
-
 try:
     from config_local import *
 except ImportError:
@@ -45,7 +44,6 @@ except ImportError:
 
 assert CODES_PER_TASK_MAX >= CODES_PER_TASK_MIN
 
-# todo valid user agent and referrer
 # todo proxy server =)
 # todo compare speed bulk vs minimal validation request
 # todo storage to db?
@@ -100,7 +98,8 @@ async def task(pid, storage: Storage, sem: asyncio.Semaphore):
             return
 
         async with aiohttp.ClientSession() as session:
-            async with session.post(URL, data={'codes': codes}) as resp:
+            async with session.post(URL, data={'codes': codes},
+                                    headers={'User-Agent': USER_AGENT, 'Referer': REFERER}) as resp:
                 response_json = await resp.json()
                 log('Process {}: {} {}, took: {:.2f} seconds'.format(
                     pid, codes, response_json, time.time() - start))
