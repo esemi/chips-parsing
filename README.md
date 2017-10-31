@@ -1,4 +1,4 @@
-# pringles-promo-parsing
+# Chips and tricks
 
 - - -
 
