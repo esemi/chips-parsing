@@ -16,9 +16,10 @@ VALID_RESPONSE = 'Valid'
 INVALID_RESPONSE = 'Invalid'
 DUPLICATED_RESPONSE = 'Duplicated'
 
-# todo stats
 # todo proxy server =)
 # todo storage to db?
+# todo storage to fs?
+# todo remove validation request (3 codes tasks)
 
 
 class Storage(object):
@@ -94,12 +95,13 @@ async def run():
     storage = Storage()
     sem = asyncio.Semaphore(MAX_CLIENTS)
     task_count = math.ceil(len(storage.codes) / 2)  # 2 code per request (1 code for validation response)
-    log('Create %d tasks' % task_count)
+    log('Create %d tasks' % task_count, True)
     start = time.time()
     # noinspection PyTypeChecker
     tasks = [asyncio.ensure_future(task(i, storage, sem)) for i in range(1, task_count)]
     await asyncio.wait(tasks)
-    log("Process took: {:.2f} seconds".format(time.time() - start), True)
+    end_time = time.time() - start
+    log("Process took: %.2f seconds (%.2f req/sec)" % (end_time, task_count / end_time), True)
     log('Result: invalid codes %d; valid codes %d; codes (%s)' % (len(storage.invalid_codes), len(storage.valid_codes),
                                                                   storage.valid_codes), True)
 
