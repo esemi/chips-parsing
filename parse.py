@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 
 import time
+
+import math
 from collections import deque
 from itertools import product
 
@@ -10,20 +12,25 @@ import aiohttp
 
 from config import VALID_CODE, URL, MAX_CLIENTS, CODE_PREFIX, DEBUG, CODE_CHARS
 
+VALID_RESPONSE = 'Valid'
+INVALID_RESPONSE = 'Invalid'
+DUPLICATED_RESPONSE = 'Duplicated'
+
 # todo stats
-# todo bound_fetch
+# todo proxy server =)
+# todo storage to db?
 
 
-# todo db for storage ?
 class Storage(object):
 
     codes = deque()
+    valid_codes = []
+    invalid_codes = []
 
     def __init__(self):
         combination_len = len(VALID_CODE) - len(CODE_PREFIX)
         log('Generate code by len %s' % combination_len)
         for comination in product(CODE_CHARS, repeat=combination_len):
-            print(comination)
             code = '%s%s' % (CODE_PREFIX, ''.join(comination))
             log('add code %s' % code)
             self.codes.append(code)
@@ -33,47 +40,72 @@ class Storage(object):
         return self.codes.pop()
 
     def save_parsed_code(self, code: str, valid: bool):
-        pass
+        if valid:
+            self.valid_codes.append(code)
+        else:
+            self.invalid_codes.append(code)
 
 
-def log(msg):
+def log(msg, force=False):
     # todo use logging
-    if DEBUG:
+    if DEBUG or force:
         print(msg)
 
 
-async def task(pid, storage: Storage):
-    log('Fetch async process {} started'.format(pid))
-    start = time.time()
-    try:
-        code1 = storage.get_code_for_check()
-    except IndexError:
-        code1 = ''
+async def task(pid, storage: Storage, sem: asyncio.Semaphore):
+    async with sem:
+        log('Fetch async process {} started'.format(pid))
+        start = time.time()
+        codes = []
+        try:
+            codes.append(storage.get_code_for_check())
+        except IndexError:
+            codes.append('')
 
-    try:
-        code2 = storage.get_code_for_check()
-    except IndexError:
-        code2 = ''
+        try:
+            codes.append(storage.get_code_for_check())
+        except IndexError:
+            codes.append('')
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post(URL, data={'codes': [VALID_CODE, code1, code2]}) as resp:
-            response_json = await resp.json()
-            log(response_json)
-            log('Process {}: {} {} {}, took: {:.2f} seconds'.format(
-                pid, code1, code2, response_json, time.time() - start))
-            # todo parse response and save results
+        async with aiohttp.ClientSession() as session:
+            async with session.post(URL, data={'codes': [VALID_CODE, *codes]}) as resp:
+                response_json = await resp.json()
+                log(response_json)
+                log('Process {}: {} {}, took: {:.2f} seconds'.format(
+                    pid, codes, response_json, time.time() - start))
+
+                if response_json['result'][0]['status'] != VALID_RESPONSE:
+                    log('Invalid response %s' % response_json)
+                    return
+
+                for i, r in enumerate(response_json['result'][1:]):
+                    is_valid = r['status'] == VALID_RESPONSE
+                    log('save code %s %s' % (codes[i], int(is_valid)))
+                    storage.save_parsed_code(codes[i], is_valid)
+
+                    if is_valid:
+                        log('WINNER %s' % codes[i], True)
+
+                    if r['status'] not in {VALID_RESPONSE, INVALID_RESPONSE, DUPLICATED_RESPONSE}:
+                        log('UNKNOWN STATUS %s' % r['status'], True)
 
 
 async def run():
     storage = Storage()
+    sem = asyncio.Semaphore(MAX_CLIENTS)
+    task_count = math.ceil(len(storage.codes) / 2)  # 2 code per request (1 code for validation response)
+    log('Create %d tasks' % task_count)
     start = time.time()
-    tasks = [asyncio.ensure_future(task(i, storage)) for i in range(1, MAX_CLIENTS + 1)]
+    # noinspection PyTypeChecker
+    tasks = [asyncio.ensure_future(task(i, storage, sem)) for i in range(1, task_count)]
     await asyncio.wait(tasks)
-    log("Process took: {:.2f} seconds".format(time.time() - start))
+    log("Process took: {:.2f} seconds".format(time.time() - start), True)
+    log('Result: invalid codes %d; valid codes %d; codes (%s)' % (len(storage.invalid_codes), len(storage.valid_codes),
+                                                                  storage.valid_codes), True)
 
 
 if __name__ == '__main__':
-    log('Asynchronous:')
+    log('Start %s clients:' % MAX_CLIENTS, True)
     ioloop = asyncio.get_event_loop()
     ioloop.run_until_complete(run())
     ioloop.close()
