@@ -1,3 +1,4 @@
 aiohttp
 aiodns
 aiofiles
+cchardet
