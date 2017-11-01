@@ -31,9 +31,9 @@ CODE_PREFIX = ''
 CODE_CHARS = ascii_uppercase
 CODE_LEN = 10
 
-CODES_PER_SESSION_LIMIT = 10000   # limit per one parsing session
+CODES_PER_SESSION_LIMIT = 30000   # limit per one parsing session
 PROXY = None
-MAX_SIMULTANEOUSLY_REQUEST = 2000  # limit per onetime
+MAX_SIMULTANEOUSLY_REQUEST = 500  # limit per onetime
 CODES_BUFFER_LIMIT = 1000
 CODES_PER_TASK_MIN = 3   # three is limitation in browser,
 CODES_PER_TASK_MAX = 30  # but we can more
@@ -49,9 +49,7 @@ except ImportError:
 
 assert CODES_PER_TASK_MAX >= CODES_PER_TASK_MIN
 
-# todo proxy server =)
 # todo compare speed bulk vs minimal validation request
-# todo revalidate success codes
 
 
 class Storage(object):
