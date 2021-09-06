@@ -1,13 +1,10 @@
-# Chips and tricks
-
-- - -
-
-## Service installation
-
-- - -
+Bruteforce Pringles promocodes
+---
+Перебор и парсинг промокодов в акции чипсов Pringles.
 
 
-```sh
+### Usage
+```
 $ pip install --upgrade virtualenv
 $ virtualenv -p python3 venv
 $ source venv/bin/activate
